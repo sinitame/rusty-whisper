@@ -6,10 +6,12 @@ use audio::{get_mel_filteres, read_audio};
 use ndarray_npy::NpzReader;
 use rayon::prelude::*;
 use std::fs::File;
-use tokenizers::Tokenizer;
 use tract_ndarray::{concatenate, s, Array, Array2, ArrayBase, Axis, Dim, IxDynImpl, OwnedRepr};
 use tract_onnx::prelude::*;
 use utils::{KVCache, Options};
+
+pub use tokenizers::Tokenizer;
+
 
 pub struct Whisper {
     encoder: SimplePlan<TypedFact, Box<dyn TypedOp>, Graph<TypedFact, Box<dyn TypedOp>>>,
