@@ -1,34 +1,34 @@
-mod audio;
+pub mod audio;
 mod tokenizers;
 mod utils;
 
 use audio::{get_mel_filteres, read_audio};
 use ndarray_npy::NpzReader;
 use rayon::prelude::*;
-use std::fs::File;
+use std::{fs::File, path::Path};
 use tract_ndarray::{concatenate, s, Array, Array2, ArrayBase, Axis, Dim, IxDynImpl, OwnedRepr};
 use tract_onnx::prelude::*;
 use utils::{KVCache, Options};
 
 pub use tokenizers::Tokenizer;
 
-
+#[derive(Debug, Clone)]
 pub struct Whisper {
     encoder: SimplePlan<TypedFact, Box<dyn TypedOp>, Graph<TypedFact, Box<dyn TypedOp>>>,
     decoder: SimplePlan<TypedFact, Box<dyn TypedOp>, Graph<TypedFact, Box<dyn TypedOp>>>,
     tokenizer: Tokenizer,
     pos_emb: ArrayBase<OwnedRepr<f32>, Dim<[usize; 3]>>,
-    mel_filters: Array2<f32>,
+    pub mel_filters: Array2<f32>,
     options: Options,
 }
 
 impl Whisper {
-    pub fn new(
-        encoder_path: &str,
-        decoder_path: &str,
-        tokenizer_path: &str,
-        pos_emb_path: &str,
-        mel_filters_path: &str,
+    pub fn new<P: AsRef<Path>>(
+        encoder_path: P,
+        decoder_path: P,
+        tokenizer_path: P,
+        pos_emb_path: P,
+        mel_filters_path: P,
     ) -> Whisper {
         let encoder = tract_onnx::onnx()
             .model_for_path(encoder_path)
@@ -212,7 +212,7 @@ impl Whisper {
         return tokens.into_raw_vec();
     }
 
-    fn run(&self, mel: Array2<f32>, language: &str) -> String {
+    pub fn run(&self, mel: Array2<f32>, language: &str) -> String {
         let num_frames = mel.shape()[1];
         let mut seek = 0;
         let mut segments = vec![];
@@ -250,7 +250,7 @@ impl Whisper {
 
     pub fn recognize_from_audio(&self, audio_path: &str, language: &str) -> String {
         let audio_data = read_audio(audio_path).unwrap();
-        let mel = audio::log_mel_spectrogram(audio_data, self.mel_filters.clone());
+        let mel = audio::log_mel_spectrogram(audio_data.as_slice(), self.mel_filters.clone());
         self.run(mel, language)
     }
 }

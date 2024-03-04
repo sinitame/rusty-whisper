@@ -1,7 +1,7 @@
 use tract_ndarray::{Array3, Dim};
 use tract_onnx::prelude::*;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Options {
     pub eot_token: usize,
     pub sot_prev: usize,

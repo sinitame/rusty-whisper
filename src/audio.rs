@@ -5,12 +5,13 @@ use rustfft::num_complex::ComplexFloat;
 use rustfft::{num_complex::Complex, FftPlanner};
 use std::f32::consts::PI;
 use std::fs::File;
+use std::path::Path;
 use tract_onnx::tract_hir::tract_ndarray::{s, Array, Array2};
 
 const N_FFT: usize = 400;
 pub const N_FRAMES: usize = 3000;
 
-fn pad_audio(audio: &Vec<f32>) -> Vec<f32> {
+fn pad_audio(audio: &[f32]) -> Vec<f32> {
     let audio_len = audio.len();
     let pad_len = N_FFT / 2;
 
@@ -39,8 +40,8 @@ pub fn read_audio(file_path: &str) -> Result<Vec<f32>, Error> {
     Ok(audio_data)
 }
 
-pub fn log_mel_spectrogram(audio_data: Vec<f32>, filters: Array2<f32>) -> Array2<f32> {
-    let stft = par_generate_stft(&pad_audio(&audio_data), 400, 160);
+pub fn log_mel_spectrogram(audio_data: &[f32], filters: Array2<f32>) -> Array2<f32> {
+    let stft = par_generate_stft(&pad_audio(audio_data), 400, 160);
     // let stft = generate_stft(&pad_audio(&audio_data), 400, 160);
     let magnitudes: Array2<f32> = Array2::from_shape_fn((stft[0].len(), stft.len()), |(i, j)| {
         let element = stft[j][i].abs();
@@ -113,7 +114,7 @@ fn par_generate_stft(audio: &Vec<f32>, n_fft: usize, hop_length: usize) -> Vec<V
     stft
 }
 
-pub fn get_mel_filteres(mel_filteres_path: &str) -> Array2<f32> {
+pub fn get_mel_filteres<P: AsRef<Path>>(mel_filteres_path: P) -> Array2<f32> {
     let file = File::open(mel_filteres_path).expect("Failed to open file");
     let mut npz = NpzReader::new(file).expect("Failed to read NPZ file");
     let mel_filters: Array2<f32> = npz.by_index(0).unwrap();

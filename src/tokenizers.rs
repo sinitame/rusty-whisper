@@ -2,16 +2,17 @@ use base64::{engine::general_purpose, Engine as _};
 use rustc_hash::FxHashMap as HashMap;
 use std::fs::File;
 use std::io::Read;
+use std::path::Path;
 use tiktoken_rs::CoreBPE;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Tokenizer {
     bpe: CoreBPE,
     pub lang2token: HashMap<String, usize>,
 }
 
 impl Tokenizer {
-    pub fn new(vocab_path: &str) -> Tokenizer {
+    pub fn new<P: AsRef<Path>>(vocab_path: P) -> Tokenizer {
         let mut file = File::open(vocab_path).expect("Не удалось открыть файл");
 
         let langs = vec![
