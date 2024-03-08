@@ -6,9 +6,8 @@ use audio::{get_mel_filteres, read_audio};
 use ndarray_npy::NpzReader;
 use rayon::prelude::*;
 use std::{fs::File, path::Path};
-use tract_core::transform::get_transformer;
 use tract_ndarray::{concatenate, s, Array, Array2, ArrayBase, Axis, Dim, IxDynImpl, OwnedRepr};
-use tract_onnx::prelude::*;
+use tract_onnx::{prelude::*, tract_core::transform::get_transformer};
 use utils::{KVCache, Options};
 
 pub use tokenizers::Tokenizer;
