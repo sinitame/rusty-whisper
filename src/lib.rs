@@ -6,6 +6,7 @@ use audio::{get_mel_filteres, read_audio};
 use ndarray_npy::NpzReader;
 use rayon::prelude::*;
 use std::{fs::File, path::Path};
+use tract_core::transform::get_transformer;
 use tract_ndarray::{concatenate, s, Array, Array2, ArrayBase, Axis, Dim, IxDynImpl, OwnedRepr};
 use tract_onnx::prelude::*;
 use utils::{KVCache, Options};
@@ -22,6 +23,29 @@ pub struct Whisper {
     options: Options,
 }
 
+fn load_model(model_path: &Path) -> TypedSimplePlan<TypedModel> {
+    let mut typed_model = tract_onnx::onnx()
+        .model_for_path(model_path)
+        .unwrap()
+        .into_typed()
+        .unwrap()
+        .into_decluttered()
+        .unwrap();
+
+    if cfg!(features = "accelerate") {
+        get_transformer("as-blas")
+            .unwrap()
+            .transform(&mut typed_model)
+            .unwrap();
+    }
+
+    typed_model
+        .into_optimized()
+        .unwrap()
+        .into_runnable()
+        .unwrap()
+}
+
 impl Whisper {
     pub fn new<P: AsRef<Path>>(
         encoder_path: P,
@@ -30,20 +54,8 @@ impl Whisper {
         pos_emb_path: P,
         mel_filters_path: P,
     ) -> Whisper {
-        let encoder = tract_onnx::onnx()
-            .model_for_path(encoder_path)
-            .unwrap()
-            .into_optimized()
-            .unwrap()
-            .into_runnable()
-            .unwrap();
-        let decoder = tract_onnx::onnx()
-            .model_for_path(decoder_path)
-            .unwrap()
-            .into_optimized()
-            .unwrap()
-            .into_runnable()
-            .unwrap();
+        let encoder = load_model(encoder_path.as_ref());
+        let decoder = load_model(decoder_path.as_ref());
         let tokenizer = Tokenizer::new(tokenizer_path);
         let pos_emb = {
             let file = File::open(pos_emb_path).expect("Failed to open file");
