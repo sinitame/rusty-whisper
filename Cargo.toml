@@ -25,7 +25,7 @@ path = "src/lib.rs"
 crate-type = ["lib"]
 
 [features]
-accelerate = ["tract-core/accelerate"]
+accelerate = ["tract-onnx/accelerate"]
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
@@ -38,5 +38,4 @@ rayon = "1.8.0"
 rustc-hash = "1.1.0"
 rustfft = "6.1.0"
 tiktoken-rs = "0.5.3"
-tract-onnx = {git = "https://github.com/sonos/tract", rev = "99ebf61"} # tract main 08/03
-tract-core = {git = "https://github.com/sonos/tract", rev = "99ebf61"} # tract main 08/03
+tract-onnx = {git = "https://github.com/sonos/tract", branch = "expose-accelerate-amx"}
