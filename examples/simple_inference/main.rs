@@ -1,4 +1,4 @@
-use std::{path::PathBuf, str::FromStr};
+use std::{path::PathBuf, str::FromStr, time::Instant};
 
 use rusty_whisper::Whisper;
 use serde::Deserialize;
@@ -13,6 +13,7 @@ struct ModelConfig {
 }
 
 fn main() {
+    env_logger::init();
     let args = std::env::args().collect::<Vec<String>>();
     let model_config_path = args
         .get(1)
@@ -35,6 +36,9 @@ fn main() {
         model_dir.join(model_config.positional_embedding),
         model_dir.join(model_config.mel_filters),
     );
+    let start = Instant::now();
     let result = whisper.recognize_from_audio(&audio_file_path, "en");
-    println!("{}", result);
+    let total_duration = start.elapsed();
+    println!("{result}");
+    println!("Total execution duration: {total_duration:?}");
 }

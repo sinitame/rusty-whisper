@@ -7,7 +7,8 @@ use ndarray_npy::NpzReader;
 use rayon::prelude::*;
 use std::{fs::File, path::Path};
 use tract_ndarray::{concatenate, s, Array, Array2, ArrayBase, Axis, Dim, IxDynImpl, OwnedRepr};
-use tract_onnx::{prelude::*, tract_core::transform::get_transformer};
+use tract_core::{prelude::*, transform::get_transform};
+use tract_onnx::prelude::{Framework, InferenceModelExt};
 use utils::{KVCache, Options};
 
 pub use tokenizers::Tokenizer;
@@ -31,8 +32,10 @@ fn load_model(model_path: &Path) -> TypedSimplePlan<TypedModel> {
         .into_decluttered()
         .unwrap();
 
-    if cfg!(features = "accelerate") {
-        get_transformer("as-blas")
+    if cfg!(any(feature = "accelerate", feature = "openblas", feature = "blis"))
+    {
+        log::info!("Applying 'as-bas' transformation.");
+        get_transform("as-blas")
             .unwrap()
             .transform(&mut typed_model)
             .unwrap();
