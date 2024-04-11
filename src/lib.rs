@@ -1,51 +1,23 @@
 pub mod audio;
+mod runner;
 mod tokenizers;
 mod utils;
 
-use audio::{get_mel_filteres, read_audio};
-use ndarray_npy::NpzReader;
+use audio::{read_audio, Featurizer};
 use rayon::prelude::*;
-use std::{fs::File, path::Path};
+use runner::{load_model, load_pos_embedding, WhisperRunner};
+use std::path::Path;
+use tract_core::prelude::*;
 use tract_ndarray::{concatenate, s, Array, Array2, ArrayBase, Axis, Dim, IxDynImpl, OwnedRepr};
-use tract_core::{prelude::*, transform::get_transform};
-use tract_onnx::prelude::{Framework, InferenceModelExt};
 use utils::{KVCache, Options};
 
 pub use tokenizers::Tokenizer;
 
-#[derive(Debug, Clone)]
 pub struct Whisper {
-    encoder: SimplePlan<TypedFact, Box<dyn TypedOp>, Graph<TypedFact, Box<dyn TypedOp>>>,
-    decoder: SimplePlan<TypedFact, Box<dyn TypedOp>, Graph<TypedFact, Box<dyn TypedOp>>>,
+    featurizer: Featurizer,
     tokenizer: Tokenizer,
-    pos_emb: ArrayBase<OwnedRepr<f32>, Dim<[usize; 3]>>,
-    pub mel_filters: Array2<f32>,
+    runner: WhisperRunner,
     options: Options,
-}
-
-fn load_model(model_path: &Path) -> TypedSimplePlan<TypedModel> {
-    let mut typed_model = tract_onnx::onnx()
-        .model_for_path(model_path)
-        .unwrap()
-        .into_typed()
-        .unwrap()
-        .into_decluttered()
-        .unwrap();
-
-    if cfg!(any(feature = "accelerate", feature = "openblas", feature = "blis"))
-    {
-        log::info!("Applying 'as-bas' transformation.");
-        get_transform("as-blas")
-            .unwrap()
-            .transform(&mut typed_model)
-            .unwrap();
-    }
-
-    typed_model
-        .into_optimized()
-        .unwrap()
-        .into_runnable()
-        .unwrap()
 }
 
 impl Whisper {
@@ -56,37 +28,20 @@ impl Whisper {
         pos_emb_path: P,
         mel_filters_path: P,
     ) -> Whisper {
-        let encoder = load_model(encoder_path.as_ref());
-        let decoder = load_model(decoder_path.as_ref());
-        let tokenizer = Tokenizer::new(tokenizer_path);
-        let pos_emb = {
-            let file = File::open(pos_emb_path).expect("Failed to open file");
-            let mut npz = NpzReader::new(file).expect("Failed to read NPZ file");
-            let pos_emb: Array2<f32> = npz.by_index(0).unwrap();
-            pos_emb.insert_axis(Axis(0))
-        };
-        let mel_filters = get_mel_filteres(mel_filters_path);
+        let tokenizer = Tokenizer::new(tokenizer_path.as_ref());
+        let encoder = Arc::new(load_model(encoder_path.as_ref()));
+        let decoder = Arc::new(load_model(decoder_path.as_ref()));
+        let positional_embedding = load_pos_embedding(pos_emb_path.as_ref());
+        let runner = WhisperRunner::new(encoder, decoder, positional_embedding);
+        let featurizer = Featurizer::new(mel_filters_path.as_ref());
         let options = Options::new();
 
         Whisper {
-            encoder,
-            decoder,
+            featurizer,
             tokenizer,
-            pos_emb,
-            mel_filters,
+            runner,
             options,
         }
-    }
-
-    fn get_audio_features(&self, mel: Array2<f32>) -> ArrayBase<OwnedRepr<f32>, Dim<IxDynImpl>> {
-        let mel: Tensor = mel.insert_axis(Axis(0)).into();
-        let inputs = tvec!(mel.into());
-        let encoder_out = self.encoder.run(inputs).unwrap()[0]
-            .to_array_view::<f32>()
-            .unwrap()
-            .to_owned();
-
-        encoder_out
     }
 
     fn get_initial_tokens(&self, prompt: Vec<i32>, language: &str) -> Vec<i32> {
@@ -131,7 +86,8 @@ impl Whisper {
         }
 
         let pos_emb = self
-            .pos_emb
+            .runner
+            .positional_embedding
             .slice(s![.., offset..offset + tokens.shape()[1], ..])
             .to_owned();
 
@@ -153,7 +109,7 @@ impl Whisper {
             kv_cache.v6.into(),
         );
 
-        let out = self.decoder.run(inputs).unwrap();
+        let out = self.runner.decoder.run(inputs).unwrap();
         let logits = out[0].to_array_view::<f32>().unwrap().to_owned();
         let k1 = out[1].to_owned().into_tensor();
         let v1 = out[2].to_owned().into_tensor();
@@ -245,7 +201,7 @@ impl Whisper {
         }
         let audio_features: Vec<ArrayBase<OwnedRepr<f32>, Dim<IxDynImpl>>> = segments
             .par_iter()
-            .map(|segment| self.get_audio_features(segment.clone()))
+            .map(|segment| self.runner.compute_audio_features(segment.clone()))
             .collect();
         let mut result: Vec<i32> = vec![];
         for audio_feature in audio_features {
@@ -264,7 +220,7 @@ impl Whisper {
 
     pub fn recognize_from_audio(&self, audio_path: &str, language: &str) -> String {
         let audio_data = read_audio(audio_path).unwrap();
-        let mel = audio::log_mel_spectrogram(audio_data.as_slice(), self.mel_filters.clone());
+        let mel = self.featurizer.featurize(audio_data.as_slice());
         self.run(mel, language)
     }
 }
