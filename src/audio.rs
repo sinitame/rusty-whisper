@@ -11,7 +11,7 @@ use tract_onnx::tract_hir::tract_ndarray::{s, Array, Array2};
 const N_FFT: usize = 400;
 pub const N_FRAMES: usize = 3000;
 
-pub fn read_audio(file_path: &str) -> Result<Vec<f32>, Error> {
+pub fn read_audio<P: AsRef<Path>>(file_path: P) -> Result<Vec<f32>, Error> {
     let reader = WavReader::open(file_path)?;
     let mut audio_data = Vec::new();
     for sample in reader.into_samples::<i32>() {

@@ -29,7 +29,7 @@ fn main() {
     let config = std::fs::read_to_string(&model_config_path)
         .expect("Could not read model configuration file.");
     let model_config: ModelConfig = serde_json::from_str(&config).expect("Invalid config.");
-    let whisper = Whisper::new(
+    let mut whisper = Whisper::new(
         model_dir.join(model_config.encoder),
         model_dir.join(model_config.decoder),
         model_dir.join(model_config.tokenizer),
@@ -37,7 +37,7 @@ fn main() {
         model_dir.join(model_config.mel_filters),
     );
     let start = Instant::now();
-    let result = whisper.recognize_from_audio(&audio_file_path, "en");
+    let result = whisper.predict(&audio_file_path, "en").unwrap();
     let total_duration = start.elapsed();
     println!("{result}");
     println!("Total execution duration: {total_duration:?}");
