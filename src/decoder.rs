@@ -1,34 +1,25 @@
-use ndarray::{s, Array2, ArrayBase, Dim, IxDynImpl, OwnedRepr};
-use rayon::prelude::*;
+use ndarray::{s, ArrayBase, Dim, IxDynImpl, OwnedRepr};
+use tract_core::value::TValue;
 
-use crate::{
-    audio::{self, Featurizer},
-    runner::WhisperRunner,
-    utils::Options,
-    Tokenizer,
-};
+use crate::{runner::WhisperRunner, utils::Options, Tokenizer};
 
 pub struct GreedyDecoder {
-    decoded_tokens: Option<Vec<i32>>,
-    featurizer: Featurizer,
+    decoded_tokens: Option<Vec<u32>>,
     options: Options,
     runner: WhisperRunner,
     tokenizer: Tokenizer,
+    kv_cache: Vec<TValue>,
 }
 
 impl GreedyDecoder {
-    pub fn new(
-        featurizer: Featurizer,
-        runner: WhisperRunner,
-        tokenizer: Tokenizer,
-        options: Options,
-    ) -> Self {
+    pub fn new(runner: WhisperRunner, tokenizer: Tokenizer, options: Options) -> Self {
+        let default_kv_cache = runner.default_kv_cache();
         Self {
             decoded_tokens: None,
-            featurizer,
             options,
             runner,
             tokenizer,
+            kv_cache: default_kv_cache,
         }
     }
 
@@ -43,30 +34,15 @@ impl GreedyDecoder {
         })
     }
 
-    pub fn process_audio(&mut self, audio: &[f32], language: &str) -> bool {
-        let mel = self.featurizer.featurize(audio);
-
-        let num_frames = mel.shape()[1];
-        let mut seek = 0;
-        let mut segments = vec![];
-
-        // Compute audio embeddings in parallel
-        while seek < num_frames {
-            let segment: Array2<f32>;
-
-            if seek + audio::N_FRAMES < mel.shape()[1] {
-                segment = mel.slice(s![.., seek..seek + audio::N_FRAMES]).to_owned();
-            } else {
-                segment = mel.slice(s![.., seek..]).to_owned();
-            }
-
-            segments.push(audio::pad_or_trim(segment, audio::N_FRAMES));
-            seek += audio::N_FRAMES;
-        }
-        let audio_embeddings: Vec<ArrayBase<OwnedRepr<f32>, Dim<IxDynImpl>>> = segments
-            .par_iter()
-            .map(|segment| self.runner.compute_audio_embedding(segment.clone()))
-            .collect();
+    pub fn process_audio(
+        &mut self,
+        audio: &[f32],
+        language: &str,
+        enable_multi_threaded_encoder: bool,
+    ) -> bool {
+        let audio_embeddings = self
+            .runner
+            .compute_audio_embedding(audio, enable_multi_threaded_encoder);
 
         // For each audio chunk, predict tokens
         for audio_embedding in audio_embeddings {
@@ -84,14 +60,20 @@ impl GreedyDecoder {
         &mut self,
         audio_embedding: &ArrayBase<OwnedRepr<f32>, Dim<IxDynImpl>>,
         language: &str,
-    ) -> Vec<i32> {
-        let mut tokens = self.get_initial_tokens(self.decoded_tokens.as_ref(), language);
+    ) -> Vec<u32> {
+        let mut tokens = Self::get_initial_tokens(
+            &self.tokenizer,
+            self.decoded_tokens.as_ref(),
+            language,
+            &self.options,
+        );
         let initial_len = tokens.len();
         for _ in 0..224 {
-            let logits =
+            let kv = self.kv_cache.drain(..).map(|it| it.into()).collect();
+            let (logits, new_kv) =
                 self.runner
-                    .inference_logits(tokens.as_slice(), &audio_embedding, initial_len);
-
+                    .inference_logits(tokens.as_slice(), &audio_embedding, kv, initial_len);
+            self.kv_cache = new_kv;
             let next_token = logits
                 .slice(s![.., -1, ..])
                 .iter()
@@ -104,17 +86,22 @@ impl GreedyDecoder {
                 break;
             }
 
-            tokens.push(next_token as i32);
+            tokens.push(next_token as u32);
         }
 
         tokens[initial_len..].to_vec()
     }
 
-    fn get_initial_tokens(&self, prompt: Option<&Vec<i32>>, language: &str) -> Vec<i32> {
-        let init_tokens = self.tokenizer.get_initial_tokens(language);
+    pub fn get_initial_tokens(
+        tokenizer: &Tokenizer,
+        prompt: Option<&Vec<u32>>,
+        language: &str,
+        options: &Options,
+    ) -> Vec<u32> {
+        let init_tokens = tokenizer.get_initial_tokens(language);
         if let Some(prompt) = prompt {
-            let prev_prompt_len = self.options.n_ctx / 2 - 1;
-            let prompt_tokens: Vec<i32>;
+            let prev_prompt_len = options.n_ctx / 2 - 1;
+            let prompt_tokens: Vec<u32>;
 
             if prompt.len() > prev_prompt_len {
                 prompt_tokens = prompt[prompt.len() - prev_prompt_len..].to_vec();
@@ -122,15 +109,15 @@ impl GreedyDecoder {
                 prompt_tokens = prompt.to_vec();
             }
 
-            let tokens: Vec<i32> = vec![self.options.sot_prev as i32]
+            let tokens: Vec<_> = vec![options.sot_prev as u32]
                 .into_iter()
                 .chain(prompt_tokens.into_iter())
                 .collect();
-            let tokens: Vec<i32> = tokens.into_iter().chain(init_tokens.into_iter()).collect();
+            let tokens: Vec<_> = tokens.into_iter().chain(init_tokens.into_iter()).collect();
             tokens
         } else {
-            let tokens = vec![self.options.sot_prev as i32];
-            let tokens: Vec<i32> = tokens.into_iter().chain(init_tokens.into_iter()).collect();
+            let tokens = vec![options.sot_prev as u32];
+            let tokens: Vec<_> = tokens.into_iter().chain(init_tokens.into_iter()).collect();
             tokens
         }
     }

@@ -190,9 +190,9 @@ impl Tokenizer {
         Tokenizer { bpe, lang2token }
     }
 
-    pub fn get_initial_tokens(&self, language: &str) -> Vec<i32> {
+    pub fn get_initial_tokens(&self, language: &str) -> Vec<u32> {
         let lang_token = self.lang2token.get(language).unwrap();
-        let init_tokens: Vec<i32> = vec![50258, *lang_token as i32, 50359];
+        let init_tokens: Vec<_> = vec![50258, *lang_token as u32, 50359];
         init_tokens
     }
 

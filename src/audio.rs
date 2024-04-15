@@ -22,7 +22,7 @@ pub fn read_audio<P: AsRef<Path>>(file_path: P) -> Result<Vec<f32>, Error> {
     Ok(audio_data)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Featurizer {
     filters: Array2<f32>,
 }

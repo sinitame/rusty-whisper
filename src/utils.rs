@@ -5,8 +5,8 @@ pub struct Options {
     pub n_ctx: usize,
 }
 
-impl Options {
-    pub fn new() -> Options {
+impl Default for Options {
+    fn default() -> Options {
         Options {
             eot_token: 50257,
             sot_prev: 50361,
