@@ -118,7 +118,7 @@ impl WhisperRunner {
         tokens: &[u32],
         audio_embedding: &ArrayD<f32>,
         kv_cache: Vec<TValue>,
-        initial_token_length: usize,
+        is_prompt: bool,
     ) -> (ArrayD<f32>, Vec<TValue>) {
         let tokens = Array2::from_shape_vec(
             [1, tokens.len()],
@@ -129,7 +129,9 @@ impl WhisperRunner {
         let offset = kv_cache.get(0).map(|it| it.shape()[1]).unwrap_or(0);
         let mut tokens = tokens;
 
-        if tokens.shape()[1] > initial_token_length {
+        if !is_prompt {
+            // If we are not processing a prompt, we only feed the last token to the decoder
+            // Previous tokens infos will be on the KV cache.
             tokens = tokens.slice(s![.., -1]).to_owned().insert_axis(Axis(0));
         }
 

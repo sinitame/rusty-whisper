@@ -1,5 +1,4 @@
 use ndarray::{s, ArrayBase, Dim, IxDynImpl, OwnedRepr};
-use tract_core::value::TValue;
 
 use crate::{runner::WhisperRunner, utils::Options, Tokenizer};
 
@@ -8,18 +7,15 @@ pub struct GreedyDecoder {
     options: Options,
     runner: WhisperRunner,
     tokenizer: Tokenizer,
-    kv_cache: Vec<TValue>,
 }
 
 impl GreedyDecoder {
     pub fn new(runner: WhisperRunner, tokenizer: Tokenizer, options: Options) -> Self {
-        let default_kv_cache = runner.default_kv_cache();
         Self {
             decoded_tokens: None,
             options,
             runner,
             tokenizer,
-            kv_cache: default_kv_cache,
         }
     }
 
@@ -61,6 +57,11 @@ impl GreedyDecoder {
         audio_embedding: &ArrayBase<OwnedRepr<f32>, Dim<IxDynImpl>>,
         language: &str,
     ) -> Vec<u32> {
+        // We always reset the KV cache between audio chunks even if we feed the previous chunk
+        // tokens in the new prompt. The reason for that is because additional tokens are inserted.
+        // The prompt becomes: [SOT_PREV, PROMPT (previous tokens), INIT_TOKENS].
+        // TODO: this can be optimized
+        let mut kv_cache = self.runner.default_kv_cache();
         let mut tokens = Self::get_initial_tokens(
             &self.tokenizer,
             self.decoded_tokens.as_ref(),
@@ -68,12 +69,20 @@ impl GreedyDecoder {
             &self.options,
         );
         let initial_len = tokens.len();
-        for _ in 0..224 {
-            let kv = self.kv_cache.drain(..).map(|it| it.into()).collect();
+
+        // Loop while we don't exceed the max number of tokens that can be generated from an audio
+        // chunk (30s of speech).
+        for i in 0..224 {
+            let kv = kv_cache.drain(..).map(|it| it.into()).collect();
+            // If it's the first iteration, it means that we are processing a prompt,
+            // so is_prompt should be true.
+            let is_prompt = i == 0;
             let (logits, new_kv) =
                 self.runner
-                    .inference_logits(tokens.as_slice(), &audio_embedding, kv, initial_len);
-            self.kv_cache = new_kv;
+                    .inference_logits(tokens.as_slice(), &audio_embedding, kv, is_prompt);
+
+            // Update KV cache with new values
+            kv_cache = new_kv;
             let next_token = logits
                 .slice(s![.., -1, ..])
                 .iter()
@@ -82,6 +91,8 @@ impl GreedyDecoder {
                 .map(|(i, _)| i as usize)
                 .unwrap();
 
+            // Stop if we reach end of transcript token.
+            // Second condition is not very clear ..
             if next_token == self.options.eot_token || tokens.len() > self.options.n_ctx {
                 break;
             }
@@ -89,6 +100,7 @@ impl GreedyDecoder {
             tokens.push(next_token as u32);
         }
 
+        // Return only the tokens that are not part of the prompt
         tokens[initial_len..].to_vec()
     }
 
