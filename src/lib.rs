@@ -25,16 +25,26 @@ impl Whisper {
         tokenizer_path: P,
         pos_emb_path: P,
         mel_filters_path: P,
+        enable_f16: bool,
     ) -> Whisper {
         // Load Tokenizer
         let tokenizer = Tokenizer::new(tokenizer_path.as_ref());
 
         // Load WhisperRunner
-        let encoder = Arc::new(load_model(encoder_path.as_ref()));
-        let decoder = Arc::new(load_model(decoder_path.as_ref()));
+        let (encoder, encoder_float_precision) =
+            load_model(encoder_path.as_ref(), "encoder", enable_f16).unwrap();
+        let (decoder, decoder_float_precision) =
+            load_model(decoder_path.as_ref(), "decoder", enable_f16).unwrap();
         let positional_embedding = load_pos_embedding(pos_emb_path.as_ref());
         let featurizer = Featurizer::new(mel_filters_path.as_ref());
-        let runner = WhisperRunner::new(encoder, decoder, positional_embedding, featurizer);
+        let runner = WhisperRunner::new(
+            Arc::new(encoder),
+            encoder_float_precision,
+            Arc::new(decoder),
+            decoder_float_precision,
+            positional_embedding,
+            featurizer,
+        );
 
         // Create decoder
         let options = Options::default();

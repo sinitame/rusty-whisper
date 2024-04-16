@@ -10,6 +10,7 @@ struct ModelConfig {
     pub tokenizer: String,
     pub positional_embedding: String,
     pub mel_filters: String,
+    pub enable_f16: bool,
 }
 
 fn main() {
@@ -35,6 +36,7 @@ fn main() {
         model_dir.join(model_config.tokenizer),
         model_dir.join(model_config.positional_embedding),
         model_dir.join(model_config.mel_filters),
+        model_config.enable_f16,
     );
     let start = Instant::now();
     let result = whisper.predict(&audio_file_path, "en").unwrap();
