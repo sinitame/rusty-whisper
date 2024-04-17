@@ -41,8 +41,8 @@ rayon = "1.8.0"
 rustc-hash = "1.1.0"
 rustfft = "6.1.0"
 tiktoken-rs = "0.5.3"
-tract-core = {git = "https://github.com/sonos/tract", tag = "0.21.3"}
-tract-onnx = {git = "https://github.com/sonos/tract", tag = "0.21.3"}
-tract-linalg = {git = "https://github.com/sonos/tract", tag = "0.21.3"}
+tract-core = "0.21.3"
+tract-onnx = "0.21.3"
+tract-linalg = "0.21.3"
 env_logger = "0.11.3"
 log = "0.4.21"

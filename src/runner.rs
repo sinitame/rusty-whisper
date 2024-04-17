@@ -156,7 +156,6 @@ impl WhisperRunner {
             audio_embedding_tensor.clone().into_tvalue(),
             pos_emb_tensor.into_tvalue(),
         ];
-
         inputs.extend(kv_cache);
         let mut out = self.decoder.run(inputs).unwrap();
 
