@@ -209,7 +209,7 @@ impl Whisper {
             tokens = concatenate!(Axis(1), tokens, next_word_array);
         }
         tokens = tokens.slice(s![.., initial_token_length..]).to_owned();
-        return tokens.into_raw_vec();
+        return tokens.into_raw_vec_and_offset().0;
     }
 
     pub fn run(&self, mel: Array2<f32>, language: &str) -> String {
